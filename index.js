@@ -72,17 +72,29 @@ const createAndSaveUser = (newUsername, done) => {
 };
 
 app.post('/api/users', (req, res, next) => {
-  const foundUser = findUserInDatabase(req.body.username);
+  const foundUser = findUserInDatabase(req.body.username, (err, data) => {
+    if (err) {
+      console.error(err);
+      return;
+    }
+    console.log(data);
+  });
   if (!foundUser) {
-    res.user = createAndSaveUser(req.body.username);
+    res.user = createAndSaveUser(req.body.username, (err, data) => {
+      if (err) {
+        console.error(err);
+        return;
+      }
+      console.log(data);
+    });
+    console.log(JSON.stringify(res.user));
   } else {
     res.user = foundUser;
   }
   next();
 }, (req, res) => {
   res.send({
-    _id: res.user._id,
-    username: res.user.username,
+    test: 'test message',
   });
   // object with
   // username
@@ -92,14 +104,20 @@ app.post('/api/users', (req, res, next) => {
 const getAllUsers = (done) => {
   User.find().exec((err, data) => {
     if (err) return console.error(err);
-    return done(null, data);
+    done(null, data);
   });
 };
 
 app.get('/api/users', (req, res, next) => {
   next();
 }, (req, res) => {
-  const getUsers = getAllUsers();
+  const getUsers = getAllUsers((err, data) => {
+    if (err) {
+      console.error(err);
+      return;
+    }
+    console.log(data);
+  });
   res.send(getUsers);
   // returns array containing all users
 });
@@ -128,7 +146,13 @@ const findUserById = (userId, done) => {
 };
 
 app.post('/api/users/:_id/exercises', (req, res, next) => {
-  const findUser = findUserById(req.params._id);
+  const findUser = findUserById(req.params._id, (err, data) => {
+    if (err) {
+      console.error(err);
+      return;
+    }
+    console.log(data);
+  });
   if (!findUser) {
     res.invalidUser = true;
   } else {
@@ -138,7 +162,13 @@ app.post('/api/users/:_id/exercises', (req, res, next) => {
     } else {
       req.body.date = new Date(req.body.date);
     }
-    res.exercise = createAndSaveExercise(findUser, req.body);
+    res.exercise = createAndSaveExercise(findUser, req.body, (err, data) => {
+      if (err) {
+        console.error(err);
+        return;
+      }
+      console.log(data);
+    });
   }
   // save form data with
   // username: string
@@ -176,7 +206,13 @@ const findExercisesByUserId = (userId, done) => {
 };
 
 app.get('/api/users/:_id/exercises', (req, res, next) => {
-  res.exercises = findExercisesByUserId(req.params._id);
+  res.exercises = findExercisesByUserId(req.params._id, (err, data) => {
+    if (err) {
+      console.error(err);
+      return;
+    }
+    console.log(data);
+  });
   next();
 }, (req, res) => {
   if (res.invalidUser === true) {
@@ -198,7 +234,7 @@ const getUserLogs = (userId, queries, done) => {
     .select('description duration date')
     .exec((err, data) => {
       if (err) return console.error(err);
-      return done(null, data);
+      done(null, data);
     });
 };
 
@@ -208,10 +244,22 @@ app.get('/api/users/:_id/logs', (req, res, next) => {
     to: req.query.to ? new Date(req.query.to) : null,
     limit: req.query.limit ? parseInt(req.query.limit) : null,
   };
-  res.log = getUserLogs(req.params._id, getQueries);
+  res.log = getUserLogs(req.params._id, getQueries, (err, data) => {
+    if (err) {
+      console.error(err);
+      return;
+    }
+    console.log(data);
+  });
   res.log.filter((item) => item.date.getTime() >= getQueries.from.getTime()
   && item.date.getTime() <= getQueries.to.getTime());
-  res.user = findUserById(req.params._id);
+  res.user = findUserById(req.params._id, (err, data) => {
+    if (err) {
+      console.error(err);
+      return;
+    }
+    console.log(data);
+  });
   res.count = res.log.length;
   // can add from, to and limit parameters
   // from: yyyy-mm-dd
