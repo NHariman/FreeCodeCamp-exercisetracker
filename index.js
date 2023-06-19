@@ -18,23 +18,7 @@ app.get('/', (req, res) => {
   res.sendFile(`${__dirname}/views/index.html`);
 });
 
-const userSchema = new mongoose.Schema({
-  username: {
-    type: String,
-    unique: true,
-    required: true,
-  },
-});
-
 const ExerciseSchema = new mongoose.Schema({
-  username: {
-    type: String,
-    required: true,
-  },
-  user_id: {
-    type: String,
-    required: true,
-  },
   description: {
     type: String,
     required: true,
@@ -49,182 +33,101 @@ const ExerciseSchema = new mongoose.Schema({
   },
 });
 
+const userSchema = new mongoose.Schema({
+  username: {
+    type: String,
+    unique: true,
+    required: true,
+  },
+  count: 0,
+  logs: [ExerciseSchema],
+});
+
 const User = mongoose.model('User', userSchema);
 const Exercise = mongoose.model('Exercise', ExerciseSchema);
-
-const findUserInDatabase = (user, done) => {
-  User.findOne({
-    username: user,
-  }).exec((err, data) => {
-    if (err) return console.error(err);
-    return done(null, data);
-  });
-};
 
 const createAndSaveUser = (newUsername, done) => {
   const newUser = new User({
     username: newUsername,
   });
   newUser.save((err, data) => {
-    if (err) return console.error(err);
+    if (err) return done(err, null);
     return done(null, data);
   });
 };
 
-app.post('/api/users', (req, res, next) => {
-  const foundUser = findUserInDatabase(req.body.username, (err, data) => {
+app.post('/api/users', (req, res) => {
+  res.user = createAndSaveUser(req.body.username, (err, data) => {
     if (err) {
-      console.error(err);
-      return;
+      return res.send({
+        error: 'User already exists',
+      });
     }
-    console.log(data);
-  });
-  if (!foundUser) {
-    res.user = createAndSaveUser(req.body.username, (err, data) => {
-      if (err) {
-        console.error(err);
-        return;
-      }
-      console.log(data);
+    return res.send({
+      username: data.username,
+      _id: data._id,
     });
-    console.log(JSON.stringify(res.user));
-  } else {
-    res.user = foundUser;
-  }
-  next();
-}, (req, res) => {
-  res.send({
-    test: 'test message',
   });
-  // object with
-  // username
-  // _id
-}); // creates new user using form data: username
+});
+// object with
+// username
+// _id
+// creates new user using form data: username
 
 const getAllUsers = (done) => {
   User.find().exec((err, data) => {
     if (err) return console.error(err);
-    done(null, data);
+    return done(null, data);
   });
 };
 
-app.get('/api/users', (req, res, next) => {
-  next();
-}, (req, res) => {
-  const getUsers = getAllUsers((err, data) => {
+app.get('/api/users', (req, res) => {
+  getAllUsers((err, data) => {
     if (err) {
-      console.error(err);
+      res.send({
+        error: 'cannot get users',
+      });
       return;
     }
-    console.log(data);
+    res.send(data);
   });
-  res.send(getUsers);
   // returns array containing all users
 });
 
-const createAndSaveExercise = (userData, bodyData, done) => {
+app.post('/api/users/:_id/exercises', async (req, res) => {
   const newLog = new Exercise({
-    username: userData.username,
-    user_id: bodyData._id,
-    description: bodyData.description,
-    duration: parseInt(bodyData.duration),
-    date: bodyData.date,
+    description: req.body.description,
+    duration: parseInt(req.body.duration),
+    date: req.body.date ? new Date(req.body.date).toUTCString() : new Date().toUTCString(),
   });
-  newLog.save((err, data) => {
-    if (err) return console.error(err);
-    return done(null, data);
+  const updatedUser = await User.findByIdAndUpdate(
+    req.params._id,
+    { $push: { logs: newLog }, $inc: { count: 1 } },
+    {
+      new: true,
+    },
+  );
+  res.send({
+    username: updatedUser.username,
+    description: updatedUser.logs[updatedUser.logs.length - 1].description,
+    duration: updatedUser.logs[updatedUser.logs.length - 1].duration,
+    date: updatedUser.logs[updatedUser.logs.length - 1].date,
+    _id: updatedUser._id,
   });
-};
-
-const findUserById = (userId, done) => {
-  User.findOne({
-    id: userId,
-  }).exec((err, data) => {
-    if (err) return console.error(err);
-    return done(null, data);
-  });
-};
-
-app.post('/api/users/:_id/exercises', (req, res, next) => {
-  const findUser = findUserById(req.params._id, (err, data) => {
-    if (err) {
-      console.error(err);
-      return;
-    }
-    console.log(data);
-  });
-  if (!findUser) {
-    res.invalidUser = true;
-  } else {
-    res.invalidUser = false;
-    if (!req.body.date) {
-      req.body.date = new Date();
-    } else {
-      req.body.date = new Date(req.body.date);
-    }
-    res.exercise = createAndSaveExercise(findUser, req.body, (err, data) => {
-      if (err) {
-        console.error(err);
-        return;
-      }
-      console.log(data);
-    });
-  }
-  // save form data with
-  // username: string
-  // _id: userId
-  // description: string
-  // duration: number
-  // date: Date, if no date, current date
-  // this is log
-  next();
-}, (req, res) => {
-  if (res.invalidUser === true) {
-    res.send({
-      error: 'Invalid ID',
-    });
-  } else {
-    res.send({
-      username: res.exercise.username,
-      description: res.exercise.description,
-      duration: res.exercise.duration,
-      date: res.exercise.date,
-      _id: res.exercise._id,
-    });
-  }
-  // return user object with
-  // exercise fields added
 });
 
-const findExercisesByUserId = (userId, done) => {
-  Exercise.find({
-    user_id: userId,
-  }).exec((err, data) => {
-    if (err) return console.error(err);
-    return done(null, data);
+app.get('/api/users/:_id/logs', async (req, res) => {
+  const getUser = await User.findById(req.params._id);
+  console.log(getUser);
+  res.send({
+    username: getUser.username,
+    count: getUser.count,
+    _id: getUser._id,
+    log: getUser.logs,
   });
-};
-
-app.get('/api/users/:_id/exercises', (req, res, next) => {
-  res.exercises = findExercisesByUserId(req.params._id, (err, data) => {
-    if (err) {
-      console.error(err);
-      return;
-    }
-    console.log(data);
-  });
-  next();
-}, (req, res) => {
-  if (res.invalidUser === true) {
-    res.send({
-      error: 'Invalid ID',
-    });
-  } else {
-    res.send(res.exercises);
-  }
-  // return user object with
-  // exercise fields added
 });
+
+// You can make a GET request to /api/users/:_id/logs to retrieve a full exercise log of any user.
 
 const getUserLogs = (userId, queries, done) => {
   Exercise.find({
@@ -238,48 +141,48 @@ const getUserLogs = (userId, queries, done) => {
     });
 };
 
-app.get('/api/users/:_id/logs', (req, res, next) => {
-  const getQueries = {
-    from: req.query.from ? new Date(req.query.from) : null,
-    to: req.query.to ? new Date(req.query.to) : null,
-    limit: req.query.limit ? parseInt(req.query.limit) : null,
-  };
-  res.log = getUserLogs(req.params._id, getQueries, (err, data) => {
-    if (err) {
-      console.error(err);
-      return;
-    }
-    console.log(data);
-  });
-  res.log.filter((item) => item.date.getTime() >= getQueries.from.getTime()
-  && item.date.getTime() <= getQueries.to.getTime());
-  res.user = findUserById(req.params._id, (err, data) => {
-    if (err) {
-      console.error(err);
-      return;
-    }
-    console.log(data);
-  });
-  res.count = res.log.length;
-  // can add from, to and limit parameters
-  // from: yyyy-mm-dd
-  // to: yyyy-mm-dd
-  // limit: integer
-  next();
-}, (req, res) => {
-  res.send({
-    username: res.user.username,
-    count: res.count,
-    _id: res.user._id,
-    log: res.log,
-  });
-  // returns user object with a count property representing
-  // number of exercises that belong to that user
-  // log array contains:
-  // description: string
-  // duration: number
-  // date: Date
-});
+// app.get('/api/users/:_id/logs', (req, res, next) => {
+//   const getQueries = {
+//     from: req.query.from ? new Date(req.query.from) : null,
+//     to: req.query.to ? new Date(req.query.to) : null,
+//     limit: req.query.limit ? parseInt(req.query.limit) : null,
+//   };
+//   res.log = getUserLogs(req.params._id, getQueries, (err, data) => {
+//     if (err) {
+//       console.error(err);
+//       return;
+//     }
+//     console.log(data);
+//   });
+//   res.log.filter((item) => item.date.getTime() >= getQueries.from.getTime()
+//   && item.date.getTime() <= getQueries.to.getTime());
+//   res.user = findUserById(req.params._id, (err, data) => {
+//     if (err) {
+//       console.error(err);
+//       return;
+//     }
+//     console.log(data);
+//   });
+//   res.count = res.log.length;
+//   // can add from, to and limit parameters
+//   // from: yyyy-mm-dd
+//   // to: yyyy-mm-dd
+//   // limit: integer
+//   next();
+// }, (req, res) => {
+//   res.send({
+//     username: res.user.username,
+//     count: res.count,
+//     _id: res.user._id,
+//     log: res.log,
+//   });
+//   // returns user object with a count property representing
+//   // number of exercises that belong to that user
+//   // log array contains:
+//   // description: string
+//   // duration: number
+//   // date: Date
+// });
 
 const listener = app.listen(process.env.PORT || 3000, () => {
   console.log(`Your app is listening on port ${listener.address().port}`);
