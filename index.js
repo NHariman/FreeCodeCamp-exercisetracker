@@ -94,11 +94,19 @@ app.get('/api/users', (req, res) => {
   // returns array containing all users
 });
 
+function formatDate(date) {
+  const split = date.split(' ');
+  split[0] = split[0].replace(/,/g, '');
+  const newString = `${split[0]} ${split[2]} ${split[1]} ${split[3]}`;
+  return newString;
+}
+
 app.post('/api/users/:_id/exercises', async (req, res) => {
   const newLog = new Exercise({
     description: req.body.description,
     duration: parseInt(req.body.duration),
-    date: req.body.date ? new Date(req.body.date).toUTCString() : new Date().toUTCString(),
+    date: req.body.date
+      ? new Date(req.body.date) : new Date(),
   });
   const updatedUser = await User.findByIdAndUpdate(
     req.params._id,
@@ -107,23 +115,53 @@ app.post('/api/users/:_id/exercises', async (req, res) => {
       new: true,
     },
   );
-  res.send({
-    username: updatedUser.username,
-    description: updatedUser.logs[updatedUser.logs.length - 1].description,
-    duration: updatedUser.logs[updatedUser.logs.length - 1].duration,
-    date: updatedUser.logs[updatedUser.logs.length - 1].date,
+  res.json({
     _id: updatedUser._id,
+    username: updatedUser.username,
+    date: formatDate(updatedUser.logs[updatedUser.logs.length - 1].date.toUTCString()),
+    duration: updatedUser.logs[updatedUser.logs.length - 1].duration,
+    description: updatedUser.logs[updatedUser.logs.length - 1].description,
   });
 });
 
-app.get('/api/users/:_id/logs', async (req, res) => {
+app.get('/api/users/:_id/logs/:limit?/:from?/:to?', async (req, res) => {
   const getUser = await User.findById(req.params._id);
-  console.log(getUser);
-  res.send({
+  if (!getUser) {
+    return res.send({
+      error: 'bad input',
+    });
+  }
+  getUser.logs.sort((a, b) => new Date(b.date) - new Date(a.date));
+  let newLogs;
+  if (req.query.from) {
+    const fromTime = new Date(req.query.from).getTime();
+    newLogs = getUser.logs.filter((log) => {
+      const logTime = new Date(log.date).getTime();
+      return (logTime > fromTime);
+    });
+    getUser.logs = newLogs;
+  }
+  if (req.query.to) {
+    const toTime = new Date(req.query.to).getTime();
+    newLogs = getUser.logs.filter((log) => {
+      const logTime = new Date(log.date).getTime();
+      return (logTime < toTime);
+    });
+    getUser.logs = newLogs;
+  }
+  if (req.query.limit) {
+    newLogs = getUser.logs.slice(0, req.query.limit);
+    getUser.logs = newLogs;
+  }
+  return res.send({
     username: getUser.username,
     count: getUser.count,
     _id: getUser._id,
-    log: getUser.logs,
+    log: getUser.logs.map((log) => ({
+      description: log.description,
+      duration: log.duration,
+      date: formatDate(log.date.toUTCString()),
+    })),
   });
 });
 
